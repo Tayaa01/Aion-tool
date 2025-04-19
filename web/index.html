@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Enchant stone calculator app">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="enchant">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Enchant Calculator</title>
+  <link rel="manifest" href="manifest.json">
+
+  <script>
+    // The value below is injected by flutter build, do not touch.
+    var serviceWorkerVersion = null;
+  </script>
+  <!-- This script adds the flutter initialization JS code -->
+  <script src="flutter.js" defer></script>
+  <script>
+    // Enhanced localStorage testing and initialization
+    window.addEventListener('load', function() {
+      try {
+        // Test localStorage access and create a safe API
+        const storage = {
+          getItem: function(key) {
+            try {
+              return window.localStorage.getItem(key);
+            } catch (e) {
+              console.error('localStorage.getItem failed:', e);
+              return null;
+            }
+          },
+          setItem: function(key, value) {
+            try {
+              window.localStorage.setItem(key, value);
+              return true;
+            } catch (e) {
+              console.error('localStorage.setItem failed:', e);
+              return false;
+            }
+          }
+        };
+        
+        // Test storage
+        if (storage.setItem('enchant_storage_test', 'true')) {
+          const test = storage.getItem('enchant_storage_test');
+          if (test === 'true') {
+            console.log('Web storage is working properly!');
+            
+            // Store the port to help with debugging
+            const port = window.location.port;
+            storage.setItem('enchant_web_port', port);
+            console.log(`Current port: ${port}`);
+            
+            // Create a timestamp to confirm initialization
+            storage.setItem('enchant_web_initialized', new Date().toISOString());
+          } else {
+            console.warn('Web storage test failed - getItem returned:', test);
+          }
+        } else {
+          console.warn('Web storage test failed - setItem failed');
+        }
+        
+      } catch (e) {
+        console.error('Web storage initialization error:', e);
+      }
+    });
+  </script>
+</head>
+<body>
+  <script>
+    window.addEventListener('load', function(ev) {
+      // Download main.dart.js
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: {
+          serviceWorkerVersion: serviceWorkerVersion,
+        },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
