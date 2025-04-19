@@ -58,7 +58,6 @@ class _HomePageState extends State<HomePage> {
   Map<int, IndividualStoneCalcResult> _individualStoneResults = {};
   Map<int, double> _optimalExpectedCostPerLevel = {};
   Map<int, double> _optimalExpectedStonesPerLevel = {};
-  Map<int, Map<String, double>> _optimalStoneUsageSummary = {};
 
   // Add these two fields to store breakdowns for manual path recovery
   Map<int, Map<int, double>> _optimalStonesBreakdownPerLevel = {};
@@ -84,6 +83,9 @@ class _HomePageState extends State<HomePage> {
   // Formatters
   final NumberFormat _resultPriceFormatter = NumberFormat.decimalPattern('de_DE');
 
+  // Add a FocusNode for each price input
+  final Map<int, FocusNode> _priceFocusNodes = {};
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +94,7 @@ class _HomePageState extends State<HomePage> {
     for (int level in _stoneLevels) {
       _priceControllers[level] = TextEditingController(text: '0');
       _stonePrices[level] = 0.0; // Initialize price map
+      _priceFocusNodes[level] = FocusNode(); // Add this line
     }
 
     // Set up controller listeners after initialization
@@ -122,6 +125,18 @@ class _HomePageState extends State<HomePage> {
     Future.delayed(const Duration(milliseconds: 100), () {
       _loadPricesAndInitStats();
     });
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _priceControllers.values) {
+      controller.dispose();
+    }
+    // Dispose all focus nodes
+    for (var node in _priceFocusNodes.values) {
+      node.dispose();
+    }
+    super.dispose();
   }
 
   // Helper to update target level options based on current level
@@ -200,7 +215,6 @@ class _HomePageState extends State<HomePage> {
       _individualStoneResults = newIndividualResults;
       // Clear optimal/manual results as they need recalculation via button press
       _resultsToTarget = [];
-      _optimalStoneUsageSummary = {};
       _manualPathResults = [];
       _manualStoneUsageSummary = {};
     });
@@ -214,7 +228,6 @@ class _HomePageState extends State<HomePage> {
       _resultsToTarget = [];
       _optimalExpectedCostPerLevel.clear();
       _optimalExpectedStonesPerLevel.clear();
-      _optimalStoneUsageSummary = {};
       _manualPathResults = [];
       _manualStoneUsageSummary = {};
       _optimalStonesBreakdownPerLevel = {};
@@ -257,7 +270,6 @@ class _HomePageState extends State<HomePage> {
           setState(() {
             // Assign full range results (optional, could be removed if not needed)
             _resultsToTarget = optimalResult.resultsToTarget;
-            _optimalStoneUsageSummary = optimalResult.optimalStoneUsageSummary;
 
             // Assign per-level data
             _optimalExpectedCostPerLevel = optimalResult.optimalExpectedCostPerLevel;
@@ -282,7 +294,6 @@ class _HomePageState extends State<HomePage> {
             // Optionally clear results or show a message
             setState(() {
               _resultsToTarget = [];
-              _optimalStoneUsageSummary = {};
             });
           }
         }
@@ -398,12 +409,31 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  @override
-  void dispose() {
-    for (var controller in _priceControllers.values) {
-      controller.dispose();
+  // Helper function to handle moving focus and selecting text
+  void _handleFocusMoveNext(int currentLevel) {
+    int currentIndex = _stoneLevels.indexOf(currentLevel);
+    if (currentIndex < _stoneLevels.length - 1) {
+      int nextLevel = _stoneLevels[currentIndex + 1];
+      FocusNode nextNode = _priceFocusNodes[nextLevel]!;
+      TextEditingController nextController = _priceControllers[nextLevel]!;
+
+      // Request focus directly on the node
+      nextNode.requestFocus();
+
+      // After the frame, select text in the newly focused node
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Check if the node actually gained focus before trying to select
+        if (nextNode.hasFocus) {
+          nextController.selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: nextController.text.length,
+          );
+        }
+      });
+    } else {
+      // If it's the last field, unfocus to dismiss keyboard
+      FocusScope.of(context).unfocus();
     }
-    super.dispose();
   }
 
   @override
@@ -796,45 +826,88 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(8),
                         color: Colors.grey.shade50,
                       ),
-                      child: TextFormField(
-                        controller: _priceControllers[level],
-                        decoration: InputDecoration(
-                          hintText: 'Price',
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+                      child: Focus(
+                        focusNode: _priceFocusNodes[level], // Assign focus node here
+                        onFocusChange: (hasFocus) {
+                          final controller = _priceControllers[level]!;
+                          // No need for setState here, controller changes trigger updates
+                          if (hasFocus) {
+                            if (controller.text == '0') {
+                              controller.clear();
+                            }
+                          } else {
+                            if (controller.text.trim().isEmpty) {
+                              controller.text = '0';
+                            }
+                          }
+                        },
+                        // *** Add onKeyEvent handler ***
+                        onKeyEvent: (node, event) {
+                          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.tab) {
+                            // Handle Tab press manually
+                            _handleFocusMoveNext(level);
+                            // Prevent default Tab behavior
+                            return KeyEventResult.handled;
+                          }
+                          // Allow other keys (like Enter, characters) to be processed normally
+                          return KeyEventResult.ignored;
+                        },
+                        child: TextFormField(
+                          controller: _priceControllers[level],
+                          // FocusNode is now assigned to the parent Focus widget
+                          // focusNode: _priceFocusNodes[level],
+                          decoration: InputDecoration(
+                            // ... existing decoration ...
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide(color: levelTextColor, width: 1.5),
+                            ),
+                            prefix: IgnorePointer(
+                              ignoring: true,
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 4, right: 4),
+                                child: Icon(
+                                  Icons.attach_money,
+                                  size: 16,
+                                  color: isSpecialLevel
+                                      ? warningColor
+                                      : isHighLevel
+                                          ? secondaryColor
+                                          : primaryColor,
+                                ),
+                              ),
+                            ),
+                            prefixIconConstraints: null,
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: levelTextColor, width: 1.5),
-                          ),
-                          prefixIcon: Icon(
-                            Icons.attach_money, 
-                            size: 16,
-                            color: isSpecialLevel 
-                              ? warningColor 
-                              : isHighLevel 
-                                ? secondaryColor 
-                                : primaryColor,
-                          ),
-                          prefixIconConstraints: const BoxConstraints(
-                            minWidth: 30,
-                            minHeight: 36,
-                          ),
+                          textAlign: TextAlign.end,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            ThousandsFormatter(),
+                          ],
+                          enabled: !_isLoading,
+                          // Set textInputAction to done for the last field, next for others
+                          textInputAction: _stoneLevels.indexOf(level) < _stoneLevels.length - 1
+                              ? TextInputAction.next
+                              : TextInputAction.done,
+                          // *** Remove onEditingComplete ***
+                          // onEditingComplete: () { ... } // Logic moved to onKeyEvent
+                          // Handle Enter key press explicitly if needed (onKeyEvent handles Tab)
+                          onFieldSubmitted: (value) {
+                             // This is typically triggered by Enter key
+                             _handleFocusMoveNext(level);
+                          },
                         ),
-                        textAlign: TextAlign.end,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          ThousandsFormatter(),
-                        ],
-                        enabled: !_isLoading,
                       ),
                     ),
                   ),
@@ -1457,7 +1530,7 @@ class _HomePageState extends State<HomePage> {
             Expanded(child: _buildSupplementDropdown()),
           ],
         ),
-      ],
+        ],
     );
   }
 
@@ -1517,7 +1590,6 @@ class _HomePageState extends State<HomePage> {
                 _targetEnchantLevel = newValue;
                 // Clear results as they are now invalid for the new target
                 _resultsToTarget = [];
-                _optimalStoneUsageSummary = {};
                 _manualPathResults = [];
                 _manualStoneUsageSummary = {};
                 _resultsTo10 = [];
@@ -1599,7 +1671,7 @@ class _HomePageState extends State<HomePage> {
     required Color cardHeaderBg,
   }) {
     // Define a rich purple color that complements our app's blue theme
-    final Color manualSectionColor = const Color(0xFF8E44AD); // Purple color for manual path
+    const Color manualSectionColor = Color(0xFF8E44AD); // Purple color for manual path
     
     if (!_showManualPathSection) {
       return Center(
@@ -1613,6 +1685,124 @@ class _HomePageState extends State<HomePage> {
           label: Text(
             'Show Manual +10 to +$_targetEnchantLevel Planning',
             style: TextStyle(color: manualSectionColor),
+          ),
+        ),
+      );
+    }
+    
+    final manualLevelWidgets = <Widget>[]; // Define list here
+    
+    // Generate the manual stone selection controls
+    for (int index = 0; index < (_targetEnchantLevel > 10 ? min(_targetEnchantLevel - 10, 5) : 0); index++) {
+      final level = 10 + index;
+      manualLevelWidgets.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Row(
+            children: [
+              // Level indicator with consistent styling
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: manualSectionColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '+${level + 1}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: manualSectionColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // Stone selection dropdown
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Stone', style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<int>(
+                          value: _manualStoneSelection[level] ?? 105,
+                          isExpanded: true,
+                          items: _stoneLevels
+                              .where((s) => s >= 101 && (_stonePrices[s] ?? 0) > 0)
+                              .map((s) => DropdownMenuItem<int>(
+                                    value: s,
+                                    child: Text('Level $s'),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _manualStoneSelection[level] = value;
+                                // Clear results when selection changes
+                                _manualPathResults = [];
+                                _manualStoneUsageSummary = {};
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              
+              // Supplement selection dropdown
+              Expanded(
+                flex: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Supplement', style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 4),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<double>(
+                          value: _manualSupplements[level] ?? 0.0,
+                          isExpanded: true,
+                          items: _supplementOptions
+                              .map((s) => DropdownMenuItem<double>(
+                                    value: s,
+                                    child: Text('${s.toInt()}%'),
+                                  ))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _manualSupplements[level] = value;
+                                // Clear results when selection changes
+                                _manualPathResults = [];
+                                _manualStoneUsageSummary = {};
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -1673,126 +1863,15 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 16),
                 
-                // Manual stone selection controls
-                ...List.generate(_targetEnchantLevel > 10 ? min(_targetEnchantLevel - 10, 5) : 0, (index) {
-                  final level = 10 + index;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Row(
-                      children: [
-                        // Level indicator with consistent styling
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: manualSectionColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '+${level + 1}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: manualSectionColor,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        
-                        // Stone selection dropdown
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Stone', style: TextStyle(fontSize: 12)),
-                              const SizedBox(height: 4),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade300),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<int>(
-                                    value: _manualStoneSelection[level] ?? 105,
-                                    isExpanded: true,
-                                    items: _stoneLevels
-                                        .where((s) => s >= 101 && (_stonePrices[s] ?? 0) > 0)
-                                        .map((s) => DropdownMenuItem<int>(
-                                              value: s,
-                                              child: Text('Level $s'),
-                                            ))
-                                        .toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        setState(() {
-                                          _manualStoneSelection[level] = value;
-                                          // Clear results when selection changes
-                                          _manualPathResults = [];
-                                          _manualStoneUsageSummary = {};
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        
-                        // Supplement selection dropdown
-                        Expanded(
-                          flex: 2,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Supplement', style: TextStyle(fontSize: 12)),
-                              const SizedBox(height: 4),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade300),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<double>(
-                                    value: _manualSupplements[level] ?? 0.0,
-                                    isExpanded: true,
-                                    items: _supplementOptions
-                                        .map((s) => DropdownMenuItem<double>(
-                                              value: s,
-                                              child: Text('${s.toInt()}%'),
-                                            ))
-                                        .toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        setState(() {
-                                          _manualSupplements[level] = value;
-                                          // Clear results when selection changes
-                                          _manualPathResults = [];
-                                          _manualStoneUsageSummary = {};
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
+                // Add the manually created widgets list here
+                ...manualLevelWidgets,
                 
                 const SizedBox(height: 16),
                 Center(
                   child: ElevatedButton.icon(
                     onPressed: _isLoading ? null : _calculateManualPath,
                     icon: _isLoading
-                        ? SizedBox(
+                        ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(

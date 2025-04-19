@@ -113,7 +113,7 @@ class MyApp extends StatelessWidget {
     const Color surfaceColor = Colors.white;
     const Color errorColor = Color(0xFFE53935);        // Red
     const Color successColor = Color(0xFF43A047);      // Green
-    const Color warningColor = Color(0xFFF9A825);      // Amber
+// Amber
     
     return MaterialApp(
       title: 'Enchant Calculator',
@@ -121,7 +121,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
-        colorScheme: ColorScheme(
+        colorScheme: const ColorScheme(
           brightness: Brightness.light,
           primary: primaryColor,
           onPrimary: Colors.white,
@@ -131,8 +131,6 @@ class MyApp extends StatelessWidget {
           onTertiary: Colors.white,
           error: errorColor,
           onError: Colors.white,
-          background: backgroundColor,
-          onBackground: Colors.black87,
           surface: surfaceColor,
           onSurface: Colors.black87,
         ),

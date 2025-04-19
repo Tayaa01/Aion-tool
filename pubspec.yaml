@@ -23,6 +23,3 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   
-  # Add your assets if needed
-  assets:
-    - assets/images/
